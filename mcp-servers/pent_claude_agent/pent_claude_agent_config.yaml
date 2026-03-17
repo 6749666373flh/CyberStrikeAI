@@ -3,7 +3,7 @@
 # 路径占位符：${PROJECT_ROOT} = CyberStrikeAI 项目根目录，${SCRIPT_DIR} = 本脚本所在目录
 
 # 工作目录（Agent 执行任务时的 cwd）
-cwd: "${PROJECT_ROOT}"
+cwd: "${PROJECT_ROOT}/mcp-servers/pent_claude_agent"
 
 # 允许 Agent 使用的工具
 allowed_tools:
