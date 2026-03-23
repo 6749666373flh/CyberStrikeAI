@@ -95,7 +95,23 @@ func RunDeepAgent(
 	}
 
 	mainDefs := ag.ToolsForRole(roleTools)
-	mainTools, err := einomcp.ToolsFromDefinitions(ag, holder, mainDefs, recorder)
+	toolOutputChunk := func(toolName, toolCallID, chunk string) {
+		// When toolCallId is missing, frontend ignores tool_result_delta.
+		if progress == nil || toolCallID == "" {
+			return
+		}
+		progress("tool_result_delta", chunk, map[string]interface{}{
+			"toolName":    toolName,
+			"toolCallId":  toolCallID,
+			// index/total/iteration are optional for UI; we don't know them in this bridge.
+			"index":     0,
+			"total":     0,
+			"iteration": 0,
+			"source":    "eino",
+		})
+	}
+
+	mainTools, err := einomcp.ToolsFromDefinitions(ag, holder, mainDefs, recorder, toolOutputChunk)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +199,7 @@ func RunDeepAgent(
 		}
 
 		subDefs := ag.ToolsForRole(roleTools)
-		subTools, err := einomcp.ToolsFromDefinitions(ag, holder, subDefs, recorder)
+		subTools, err := einomcp.ToolsFromDefinitions(ag, holder, subDefs, recorder, toolOutputChunk)
 		if err != nil {
 			return nil, fmt.Errorf("子代理 %q 工具: %w", id, err)
 		}
@@ -455,14 +471,24 @@ func RunDeepAgent(
 			if toolName == "" {
 				toolName = mv.ToolName
 			}
-			preview := msg.Content
+
+			// bridge 工具在 res.IsError=true 时会返回带前缀的内容；这里解析为 success/isError，避免前端误判为成功。
+			content := msg.Content
+			isErr := false
+			if strings.HasPrefix(content, einomcp.ToolErrorPrefix) {
+				isErr = true
+				content = strings.TrimPrefix(content, einomcp.ToolErrorPrefix)
+			}
+
+			preview := content
 			if len(preview) > 200 {
 				preview = preview[:200] + "..."
 			}
 			data := map[string]interface{}{
 				"toolName":       toolName,
-				"success":        true,
-				"result":         msg.Content,
+				"success":        !isErr,
+				"isError":        isErr,
+				"result":         content,
 				"resultPreview":  preview,
 				"conversationId": conversationID,
 				"einoAgent":      ev.AgentName,
