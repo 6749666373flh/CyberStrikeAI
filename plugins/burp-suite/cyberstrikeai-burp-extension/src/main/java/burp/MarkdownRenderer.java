@@ -24,7 +24,10 @@ final class MarkdownRenderer {
                 // so we explicitly define font sizes to keep a clear hierarchy.
                 .append("body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-size:13px;line-height:1.45;margin:10px;color:#111;}")
                 .append("code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;}")
-                .append("pre{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:6px;padding:10px;overflow:auto;}")
+                // Keep inline code readable (Swing may render it too small otherwise).
+                .append("code{font-size:0.95em;background:#f6f8fa;border:1px solid #e5e7eb;border-radius:4px;padding:0 4px;}")
+                .append("pre{font-size:0.95em;background:#f6f8fa;border:1px solid #e5e7eb;border-radius:6px;padding:10px;overflow:auto;}")
+                .append("pre code{font-size:1em;background:transparent;border:none;padding:0;}")
                 .append("p{margin:0.55em 0;}")
                 .append("h1{font-size:20px;margin:0.85em 0 0.45em 0;}")
                 .append("h2{font-size:18px;margin:0.85em 0 0.45em 0;}")

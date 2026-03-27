@@ -47,10 +47,7 @@ CyberStrikeAI 是一款 **AI 原生安全测试平台**，基于 Go 构建，集
 <strong>MCP 管理</strong><br/>
 <img src="./images/mcp-management.png" alt="MCP 管理" width="100%">
 </td>
-<td width="33.33%" align="center">
-<strong>MCP stdio 模式</strong><br/>
-<img src="./images/mcp-stdio2.png" alt="MCP stdio 模式" width="100%">
-</td>
+<td width="33.33%" align="center"></td>
 </tr>
 <tr>
 <td width="33.33%" align="center">
@@ -71,8 +68,14 @@ CyberStrikeAI 是一款 **AI 原生安全测试平台**，基于 Go 构建，集
 <strong>WebShell 管理</strong><br/>
 <img src="./images/webshell-management.png" alt="WebShell 管理" width="100%">
 </td>
-<td width="33.33%" align="center"></td>
-<td width="33.33%" align="center"></td>
+<td width="33.33%" align="center">
+<strong>MCP stdio 模式</strong><br/>
+<img src="./images/mcp-stdio2.png" alt="MCP stdio 模式" width="100%">
+</td>
+<td width="33.33%" align="center">
+<strong>Burp Suite 插件</strong><br/>
+<img src="./images/plugins.png" alt="Burp Suite 插件" width="100%">
+</td>
 </tr>
 </table>
 

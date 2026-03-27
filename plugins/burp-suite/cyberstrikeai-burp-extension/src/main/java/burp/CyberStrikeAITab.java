@@ -439,7 +439,7 @@ final class CyberStrikeAITab implements ITab {
             if (run == null) return;
             String token = getToken();
             if (token == null || token.trim().isEmpty()) {
-                appendToRun(runId, "\n[error] Not validated.\n");
+                appendProgressToRun(runId, "\n[error] Not validated.\n");
                 return;
             }
             String convId;
@@ -447,7 +447,7 @@ final class CyberStrikeAITab implements ITab {
                 convId = run.conversationId;
             }
             if (convId == null || convId.trim().isEmpty()) {
-                appendToRun(runId, "\n[info] conversationId not available yet (wait for server to create session).\n");
+                appendProgressToRun(runId, "\n[info] conversationId not available yet (wait for server to create session).\n");
                 return;
             }
 
@@ -456,10 +456,10 @@ final class CyberStrikeAITab implements ITab {
                 try {
                     CyberStrikeAIClient.Config cfg = currentConfig();
                     client.cancelByConversationId(cfg.baseUrl, token, convId);
-                    appendToRun(runId, "\n[info] Cancel requested.\n");
+                    appendProgressToRun(runId, "\n[info] Cancel requested.\n");
                     setRunStatus(runId, "cancelling");
                 } catch (Exception ex) {
-                    appendToRun(runId, "\n[error] Cancel failed: " + ex.getMessage() + "\n");
+                    appendProgressToRun(runId, "\n[error] Cancel failed: " + ex.getMessage() + "\n");
                 } finally {
                     SwingUtilities.invokeLater(() -> stopButton.setEnabled(true));
                 }

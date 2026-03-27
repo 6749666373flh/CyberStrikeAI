@@ -48,10 +48,7 @@ CyberStrikeAI is an **AI-native security testing platform** built in Go. It inte
 <strong>MCP Management</strong><br/>
 <img src="./images/mcp-management.png" alt="MCP management" width="100%">
 </td>
-<td width="33.33%" align="center">
-<strong>MCP stdio Mode</strong><br/>
-<img src="./images/mcp-stdio2.png" alt="MCP stdio mode" width="100%">
-</td>
+<td width="33.33%" align="center"></td>
 </tr>
 <tr>
 <td width="33.33%" align="center">
@@ -72,8 +69,14 @@ CyberStrikeAI is an **AI-native security testing platform** built in Go. It inte
 <strong>WebShell Management</strong><br/>
 <img src="./images/webshell-management.png" alt="WebShell Management" width="100%">
 </td>
-<td width="33.33%" align="center"></td>
-<td width="33.33%" align="center"></td>
+<td width="33.33%" align="center">
+<strong>MCP stdio Mode</strong><br/>
+<img src="./images/mcp-stdio2.png" alt="MCP stdio mode" width="100%">
+</td>
+<td width="33.33%" align="center">
+<strong>Burp Suite Plugin</strong><br/>
+<img src="./images/plugins.png" alt="Burp Suite plugin" width="100%">
+</td>
 </tr>
 </table>
 
