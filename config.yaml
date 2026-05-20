@@ -34,6 +34,12 @@ auth:
 log:
   level: info # 日志级别: debug(调试), info(信息), warn(警告), error(错误)
   output: stdout # 日志输出位置: stdout(标准输出), stderr(标准错误), 或文件路径
+# 平台操作审计（系统设置 -> 日志审计；不记录对话正文与每次工具调用）
+audit:
+  enabled: true
+  retention_days: 15 # 0 表示不自动清理
+  max_detail_bytes: 8192
+  auth_failure_cooldown_seconds: 60 # 同一 IP 登录/改密失败审计最短间隔（秒）；未配置时默认 60；-1 关闭节流
 # ============================================
 # 对话相关配置
 # ============================================
