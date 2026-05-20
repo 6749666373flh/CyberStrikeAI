@@ -116,6 +116,7 @@ func (h *AuditHandler) GetLog(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "审计记录不存在"})
 		return
 	}
+	audit.ApplyResourceAvailability(h.db, row)
 	c.JSON(http.StatusOK, gin.H{"log": row})
 }
 

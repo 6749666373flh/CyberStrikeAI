@@ -49,7 +49,7 @@ func (h *ConversationHandler) CreateConversation(c *gin.Context) {
 		title = "新对话"
 	}
 
-	conv, err := h.db.CreateConversation(title)
+	conv, err := h.db.CreateConversation(title, audit.ConversationCreateMetaFromGin(c, "api"))
 	if err != nil {
 		h.logger.Error("创建对话失败", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

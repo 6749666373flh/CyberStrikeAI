@@ -65,13 +65,19 @@ func (s *Service) Record(c *gin.Context, e Entry) {
 	if strings.TrimSpace(e.Actor) == "" {
 		e.Actor = "admin"
 	}
-	if e.SessionHint == "" && c != nil {
-		if token := c.GetString(security.ContextAuthTokenKey); token != "" {
-			e.SessionHint = sessionHint(token)
-		}
-	}
 	maxDetail := s.cfg.Audit.MaxDetailBytesEffective()
 	detail := SanitizeDetail(e.Detail, maxDetail)
+
+	sessionHintVal := e.SessionHint
+	if sessionHintVal == "" && c != nil {
+		if token := c.GetString(security.ContextAuthTokenKey); token != "" {
+			sessionHintVal = sessionHint(token)
+		}
+	}
+	clientIPVal := e.ClientIP
+	if clientIPVal == "" {
+		clientIPVal = clientIP(c)
+	}
 
 	row := &database.AuditLog{
 		ID:           "audit_" + strings.ReplaceAll(uuid.New().String(), "-", ""),
@@ -81,8 +87,8 @@ func (s *Service) Record(c *gin.Context, e Entry) {
 		Action:       e.Action,
 		Result:       e.Result,
 		Actor:        e.Actor,
-		SessionHint:  e.SessionHint,
-		ClientIP:     clientIP(c),
+		SessionHint:  sessionHintVal,
+		ClientIP:     clientIPVal,
 		UserAgent:    userAgent(c),
 		ResourceType: e.ResourceType,
 		ResourceID:   e.ResourceID,

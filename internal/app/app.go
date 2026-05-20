@@ -96,6 +96,7 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	}
 
 	auditSvc := audit.NewService(db, cfg, log.Logger)
+	audit.RegisterConversationCreateHook(auditSvc)
 	auditSvc.PurgeExpired()
 	audit.StartRetentionLoop(auditSvc, log.Logger)
 

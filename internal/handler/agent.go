@@ -560,7 +560,7 @@ func (h *AgentHandler) AgentLoop(c *gin.Context) {
 	conversationID := req.ConversationID
 	if conversationID == "" {
 		title := safeTruncateString(req.Message, 50)
-		conv, err := h.db.CreateConversation(title)
+		conv, err := h.db.CreateConversation(title, audit.ConversationCreateMetaFromGin(c, "agent_loop"))
 		if err != nil {
 			h.logger.Error("创建对话失败", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -725,10 +725,14 @@ func (h *AgentHandler) AgentLoop(c *gin.Context) {
 }
 
 // ProcessMessageForRobot 供机器人（企业微信/钉钉/飞书）调用：与 /api/agent-loop/stream 相同执行路径（含 progressCallback、过程详情），仅不发送 SSE，最后返回完整回复
-func (h *AgentHandler) ProcessMessageForRobot(ctx context.Context, conversationID, message, role string) (response string, convID string, err error) {
+func (h *AgentHandler) ProcessMessageForRobot(ctx context.Context, platform, conversationID, message, role string) (response string, convID string, err error) {
 	if conversationID == "" {
 		title := safeTruncateString(message, 50)
-		conv, createErr := h.db.CreateConversation(title)
+		src := "robot"
+		if strings.TrimSpace(platform) != "" {
+			src = "robot:" + strings.TrimSpace(platform)
+		}
+		conv, createErr := h.db.CreateConversation(title, audit.ConversationCreateMeta(src))
 		if createErr != nil {
 			return "", "", fmt.Errorf("创建对话失败: %w", createErr)
 		}
@@ -1427,10 +1431,12 @@ func (h *AgentHandler) AgentLoopStream(c *gin.Context) {
 		title := safeTruncateString(req.Message, 50)
 		var conv *database.Conversation
 		var err error
+		meta := audit.ConversationCreateMetaFromGin(c, "agent_loop_stream")
 		if req.WebShellConnectionID != "" {
-			conv, err = h.db.CreateConversationWithWebshell(strings.TrimSpace(req.WebShellConnectionID), title)
+			meta.Source = "webshell_chat"
+			conv, err = h.db.CreateConversationWithWebshell(strings.TrimSpace(req.WebShellConnectionID), title, meta)
 		} else {
-			conv, err = h.db.CreateConversation(title)
+			conv, err = h.db.CreateConversation(title, meta)
 		}
 		if err != nil {
 			h.logger.Error("创建对话失败", zap.Error(err))
@@ -2559,7 +2565,7 @@ func (h *AgentHandler) executeBatchQueue(queueID string) {
 
 		// 创建新对话
 		title := safeTruncateString(task.Message, 50)
-		conv, err := h.db.CreateConversation(title)
+		conv, err := h.db.CreateConversation(title, audit.ConversationCreateMeta("batch_task"))
 		var conversationID string
 		if err != nil {
 			h.logger.Error("创建对话失败", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.Error(err))
