@@ -111,7 +111,8 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	executor.RegisterTools(mcpServer)
 
 	// 注册漏洞记录工具
-	registerVulnerabilityTool(mcpServer, db, log.Logger)
+	registerVulnerabilityTools(mcpServer, db, log.Logger)
+	registerProjectFactTools(mcpServer, db, cfg, log.Logger)
 
 	if cfg.Auth.GeneratedPassword != "" {
 		config.PrintGeneratedPasswordWarning(cfg.Auth.GeneratedPassword, cfg.Auth.GeneratedPasswordPersisted, cfg.Auth.GeneratedPasswordPersistErr)
@@ -346,6 +347,7 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	authHandler.SetAudit(auditSvc)
 	attackChainHandler := handler.NewAttackChainHandler(db, &cfg.OpenAI, log.Logger)
 	vulnerabilityHandler := handler.NewVulnerabilityHandler(db, log.Logger)
+	projectHandler := handler.NewProjectHandler(db, log.Logger)
 	vulnerabilityHandler.SetAudit(auditSvc)
 	webshellHandler := handler.NewWebShellHandler(log.Logger, db)
 	webshellHandler.SetAudit(auditSvc)
@@ -414,7 +416,8 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 
 	// 设置漏洞工具注册器（内置工具，必须设置）
 	vulnerabilityRegistrar := func() error {
-		registerVulnerabilityTool(mcpServer, db, log.Logger)
+		registerVulnerabilityTools(mcpServer, db, log.Logger)
+		registerProjectFactTools(mcpServer, db, cfg, log.Logger)
 		return nil
 	}
 	configHandler.SetVulnerabilityToolRegistrar(vulnerabilityRegistrar)
@@ -502,6 +505,7 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 		attackChainHandler,
 		app, // 传递 App 实例以便动态获取 knowledgeHandler
 		vulnerabilityHandler,
+		projectHandler,
 		webshellHandler,
 		chatUploadsHandler,
 		roleHandler,
@@ -747,6 +751,7 @@ func setupRoutes(
 	attackChainHandler *handler.AttackChainHandler,
 	app *App, // 传递 App 实例以便动态获取 knowledgeHandler
 	vulnerabilityHandler *handler.VulnerabilityHandler,
+	projectHandler *handler.ProjectHandler,
 	webshellHandler *handler.WebShellHandler,
 	chatUploadsHandler *handler.ChatUploadsHandler,
 	roleHandler *handler.RoleHandler,
@@ -851,6 +856,7 @@ func setupRoutes(
 		protected.GET("/conversations/:id", conversationHandler.GetConversation)
 		protected.GET("/messages/:id/process-details", conversationHandler.GetMessageProcessDetails)
 		protected.PUT("/conversations/:id", conversationHandler.UpdateConversation)
+		protected.PUT("/conversations/:id/project", conversationHandler.SetConversationProject)
 		protected.DELETE("/conversations/:id", conversationHandler.DeleteConversation)
 		protected.POST("/conversations/:id/delete-turn", conversationHandler.DeleteConversationTurn)
 		protected.PUT("/conversations/:id/pinned", groupHandler.UpdateConversationPinned)
@@ -1067,6 +1073,18 @@ func setupRoutes(
 		protected.PUT("/vulnerabilities/:id", vulnerabilityHandler.UpdateVulnerability)
 		protected.DELETE("/vulnerabilities/:id", vulnerabilityHandler.DeleteVulnerability)
 
+		// 项目管理与事实黑板
+		protected.GET("/projects", projectHandler.ListProjects)
+		protected.POST("/projects", projectHandler.CreateProject)
+		protected.GET("/projects/:id", projectHandler.GetProject)
+		protected.PUT("/projects/:id", projectHandler.UpdateProject)
+		protected.DELETE("/projects/:id", projectHandler.DeleteProject)
+		protected.GET("/projects/:id/facts", projectHandler.ListFacts)
+		protected.POST("/projects/:id/facts", projectHandler.CreateFact)
+		protected.PUT("/projects/:id/facts/:factId", projectHandler.UpdateFact)
+		protected.DELETE("/projects/:id/facts/:factId", projectHandler.DeleteFact)
+		protected.POST("/projects/:id/facts/deprecate", projectHandler.DeprecateFact)
+
 		// WebShell 管理（代理执行 + 连接配置存 SQLite）
 		protected.GET("/webshell/connections", webshellHandler.ListConnections)
 		protected.POST("/webshell/connections", webshellHandler.CreateConnection)
@@ -1185,195 +1203,6 @@ func setupRoutes(
 		}
 		c.HTML(http.StatusOK, "index.html", gin.H{"Version": version})
 	})
-}
-
-// registerVulnerabilityTool 注册漏洞记录工具到MCP服务器
-func registerVulnerabilityTool(mcpServer *mcp.Server, db *database.DB, logger *zap.Logger) {
-	tool := mcp.Tool{
-		Name:             builtin.ToolRecordVulnerability,
-		Description:      "记录发现的漏洞详情到漏洞管理系统。当发现有效漏洞时，使用此工具记录漏洞信息，包括标题、描述、严重程度、类型、目标、证明、影响和建议等。",
-		ShortDescription: "记录发现的漏洞详情到漏洞管理系统",
-		InputSchema: map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"title": map[string]interface{}{
-					"type":        "string",
-					"description": "漏洞标题（必需）",
-				},
-				"description": map[string]interface{}{
-					"type":        "string",
-					"description": "漏洞详细描述",
-				},
-				"severity": map[string]interface{}{
-					"type":        "string",
-					"description": "漏洞严重程度：critical（严重）、high（高）、medium（中）、low（低）、info（信息）",
-					"enum":        []string{"critical", "high", "medium", "low", "info"},
-				},
-				"vulnerability_type": map[string]interface{}{
-					"type":        "string",
-					"description": "漏洞类型，如：SQL注入、XSS、CSRF、命令注入等",
-				},
-				"target": map[string]interface{}{
-					"type":        "string",
-					"description": "受影响的目标（URL、IP地址、服务等）",
-				},
-				"proof": map[string]interface{}{
-					"type":        "string",
-					"description": "漏洞证明（POC、截图、请求/响应等）",
-				},
-				"impact": map[string]interface{}{
-					"type":        "string",
-					"description": "漏洞影响说明",
-				},
-				"recommendation": map[string]interface{}{
-					"type":        "string",
-					"description": "修复建议",
-				},
-			},
-			"required": []string{"title", "severity"},
-		},
-	}
-
-	handler := func(ctx context.Context, args map[string]interface{}) (*mcp.ToolResult, error) {
-		// 从参数中获取conversation_id（由Agent自动添加）
-		conversationID, _ := args["conversation_id"].(string)
-		if conversationID == "" {
-			return &mcp.ToolResult{
-				Content: []mcp.Content{
-					{
-						Type: "text",
-						Text: "错误: conversation_id 未设置。这是系统错误，请重试。",
-					},
-				},
-				IsError: true,
-			}, nil
-		}
-
-		title, ok := args["title"].(string)
-		if !ok || title == "" {
-			return &mcp.ToolResult{
-				Content: []mcp.Content{
-					{
-						Type: "text",
-						Text: "错误: title 参数必需且不能为空",
-					},
-				},
-				IsError: true,
-			}, nil
-		}
-
-		severity, ok := args["severity"].(string)
-		if !ok || severity == "" {
-			return &mcp.ToolResult{
-				Content: []mcp.Content{
-					{
-						Type: "text",
-						Text: "错误: severity 参数必需且不能为空",
-					},
-				},
-				IsError: true,
-			}, nil
-		}
-
-		// 验证严重程度
-		validSeverities := map[string]bool{
-			"critical": true,
-			"high":     true,
-			"medium":   true,
-			"low":      true,
-			"info":     true,
-		}
-		if !validSeverities[severity] {
-			return &mcp.ToolResult{
-				Content: []mcp.Content{
-					{
-						Type: "text",
-						Text: fmt.Sprintf("错误: severity 必须是 critical、high、medium、low 或 info 之一，当前值: %s", severity),
-					},
-				},
-				IsError: true,
-			}, nil
-		}
-
-		// 获取可选参数
-		description := ""
-		if d, ok := args["description"].(string); ok {
-			description = d
-		}
-
-		vulnType := ""
-		if t, ok := args["vulnerability_type"].(string); ok {
-			vulnType = t
-		}
-
-		target := ""
-		if t, ok := args["target"].(string); ok {
-			target = t
-		}
-
-		proof := ""
-		if p, ok := args["proof"].(string); ok {
-			proof = p
-		}
-
-		impact := ""
-		if i, ok := args["impact"].(string); ok {
-			impact = i
-		}
-
-		recommendation := ""
-		if r, ok := args["recommendation"].(string); ok {
-			recommendation = r
-		}
-
-		// 创建漏洞记录
-		vuln := &database.Vulnerability{
-			ConversationID: conversationID,
-			Title:          title,
-			Description:    description,
-			Severity:       severity,
-			Status:         "open",
-			Type:           vulnType,
-			Target:         target,
-			Proof:          proof,
-			Impact:         impact,
-			Recommendation: recommendation,
-		}
-
-		created, err := db.CreateVulnerability(vuln)
-		if err != nil {
-			logger.Error("记录漏洞失败", zap.Error(err))
-			return &mcp.ToolResult{
-				Content: []mcp.Content{
-					{
-						Type: "text",
-						Text: fmt.Sprintf("记录漏洞失败: %v", err),
-					},
-				},
-				IsError: true,
-			}, nil
-		}
-
-		logger.Info("漏洞记录成功",
-			zap.String("id", created.ID),
-			zap.String("title", created.Title),
-			zap.String("severity", created.Severity),
-			zap.String("conversation_id", conversationID),
-		)
-
-		return &mcp.ToolResult{
-			Content: []mcp.Content{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("漏洞已成功记录！\n\n漏洞ID: %s\n标题: %s\n严重程度: %s\n状态: %s\n\n你可以在漏洞管理页面查看和管理此漏洞。", created.ID, created.Title, created.Severity, created.Status),
-				},
-			},
-			IsError: false,
-		}, nil
-	}
-
-	mcpServer.RegisterTool(tool, handler)
-	logger.Info("漏洞记录工具注册成功")
 }
 
 // registerWebshellTools 注册 WebShell 相关 MCP 工具，供 AI 助手在指定连接上执行命令与文件操作

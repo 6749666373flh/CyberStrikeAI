@@ -13,6 +13,7 @@ import (
 	"cyberstrike-ai/internal/config"
 	"cyberstrike-ai/internal/einomcp"
 	"cyberstrike-ai/internal/openai"
+	"cyberstrike-ai/internal/project"
 	"cyberstrike-ai/internal/reasoning"
 
 	einoopenai "github.com/cloudwego/eino-ext/components/model/openai"
@@ -38,6 +39,7 @@ func RunEinoSingleChatModelAgent(
 	roleTools []string,
 	progress func(eventType, message string, data interface{}),
 	reasoningClient *reasoning.ClientIntent,
+	systemPromptExtra string,
 ) (*RunResult, error) {
 	if appCfg == nil || ag == nil {
 		return nil, fmt.Errorf("eino single: 配置或 Agent 为空")
@@ -177,7 +179,8 @@ func RunEinoSingleChatModelAgent(
 		},
 		EmitInternalEvents: true,
 	}
-	ins := injectToolNamesOnlyInstruction(ctx, ag.EinoSingleAgentSystemInstruction(), mainTools, singleToolSearchActive)
+	ins := project.AppendSystemPromptBlock(ag.EinoSingleAgentSystemInstruction(), systemPromptExtra)
+	ins = injectToolNamesOnlyInstruction(ctx, ins, mainTools, singleToolSearchActive)
 	if logger != nil {
 		names := collectToolNames(ctx, mainTools)
 		mountedNames := collectToolNames(ctx, mainToolsForCfg)

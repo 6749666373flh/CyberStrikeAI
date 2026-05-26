@@ -30,8 +30,15 @@ type taskContextEnrichMiddleware struct {
 // newTaskContextEnrichMiddleware returns a middleware that enriches task
 // descriptions with user conversation context. Returns nil if disabled
 // (maxRunes < 0) or no user messages exist.
-func newTaskContextEnrichMiddleware(userMessage string, history []agent.ChatMessage, maxRunes int) adk.ChatModelAgentMiddleware {
+func newTaskContextEnrichMiddleware(userMessage string, history []agent.ChatMessage, maxRunes int, projectBlackboard string) adk.ChatModelAgentMiddleware {
 	supplement := buildUserContextSupplement(userMessage, history, maxRunes)
+	if bb := strings.TrimSpace(projectBlackboard); bb != "" {
+		if supplement != "" {
+			supplement += "\n\n## 项目黑板索引\n" + bb
+		} else {
+			supplement = "\n\n## 项目黑板索引\n" + bb
+		}
+	}
 	if supplement == "" {
 		return nil
 	}

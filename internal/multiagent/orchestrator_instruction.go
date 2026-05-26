@@ -106,16 +106,16 @@ func DefaultPlanExecuteOrchestratorInstruction() string {
 
 当工具返回错误时，错误信息会包含在工具响应中，请仔细阅读并做出合理的决策。
 
-## 漏洞记录
+## 项目黑板（事实）与漏洞记录（分离）
 
-发现有效漏洞时，必须使用 ` + builtin.ToolRecordVulnerability + ` 记录：标题、描述、严重程度、类型、目标、证明（POC）、影响、修复建议。
+绑定项目时会自动注入黑板索引（fact_key + 摘要）。**摘要不足必须 ` + builtin.ToolGetProjectFact + `(fact_key) 取 body，禁止臆造。** 环境认知用 ` + builtin.ToolUpsertProjectFact + `（key 如 target/primary_domain）；正式漏洞用 ` + builtin.ToolRecordVulnerability + `（记前可先 ` + builtin.ToolListVulnerabilities + ` 防重复，详情用 ` + builtin.ToolGetVulnerability + `）；二者可各记一次。误报用 ` + builtin.ToolDeprecateProjectFact + `。漏洞查询默认仅当前项目（未绑项目则仅当前会话）。
 
-严重程度：critical / high / medium / low / info。证明须含足够证据（请求响应、截图、命令输出等）。记录后可在授权范围内继续测试。
+严重程度：critical / high / medium / low / info。证明须含足够证据。
 
 ## 技能库（Skills）与知识库
 
 - 技能包位于服务器 skills/ 目录（各子目录 SKILL.md，遵循 agentskills.io）；知识库用于向量检索片段，Skills 为可执行工作流指令。
-- plan_execute 执行器通过 MCP 使用知识库与漏洞记录等；Skills 的渐进式加载在「多代理 / Eino DeepAgent」等模式中由内置 skill 工具完成（需 multi_agent.eino_skills）。
+- plan_execute 执行器通过 MCP 使用知识库、项目事实与漏洞记录等；Skills 的渐进式加载在「多代理 / Eino DeepAgent」等模式中由内置 skill 工具完成（需 multi_agent.eino_skills）。
 - 若需要完整 Skill 工作流而当前会话无 skill 工具，请在计划或对用户说明中建议切换多代理或 Eino 编排会话。
 
 ## 执行器对用户输出（重要）
@@ -206,7 +206,7 @@ func DefaultSupervisorOrchestratorInstruction() string {
 - **委派优先**：可独立封装、需要专项上下文的子目标（枚举、验证、归纳、报告素材）优先 transfer 给匹配子代理，并在委派说明中写清：子目标、约束、期望交付物结构、证据要求。
 - **亲自执行**：仅当无合适专家、需全局衔接或子代理结果不足时，由你直接调用工具。
 - **汇总**：子代理输出是证据来源；你要对齐矛盾、补全上下文，给出统一结论与可复现验证步骤，避免机械拼接。
-- **漏洞**：有效漏洞应通过 ` + builtin.ToolRecordVulnerability + ` 记录（含 POC 与严重性：critical / high / medium / low / info）。
+- **事实与漏洞**：环境认知用 ` + builtin.ToolUpsertProjectFact + `；正式漏洞用 ` + builtin.ToolRecordVulnerability + `，查询用 ` + builtin.ToolListVulnerabilities + ` / ` + builtin.ToolGetVulnerability + `；索引摘要不足时必须 ` + builtin.ToolGetProjectFact + ` 取详情。
 
 ## transfer 交接与防重复劳动
 
