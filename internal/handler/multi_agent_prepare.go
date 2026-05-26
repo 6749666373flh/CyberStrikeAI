@@ -98,6 +98,7 @@ func (h *AgentHandler) prepareMultiAgentSession(req *ChatRequest, c *gin.Context
 			builtin.ToolListProjectFacts,
 			builtin.ToolSearchProjectFacts,
 			builtin.ToolDeprecateProjectFact,
+			builtin.ToolRestoreProjectFact,
 			builtin.ToolListKnowledgeRiskTypes,
 			builtin.ToolSearchKnowledgeBase,
 		}

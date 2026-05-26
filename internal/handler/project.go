@@ -215,7 +215,9 @@ func (h *ProjectHandler) UpdateFact(c *gin.Context) {
 	if req.Summary != "" {
 		existing.Summary = req.Summary
 	}
-	existing.Body = req.Body
+	if strings.TrimSpace(req.Body) != "" {
+		existing.Body = req.Body
+	}
 	if req.Confidence != "" {
 		existing.Confidence = req.Confidence
 	}
@@ -256,6 +258,25 @@ func (h *ProjectHandler) DeprecateFact(c *gin.Context) {
 	}
 	if err := h.db.DeprecateProjectFact(c.Param("id"), req.FactKey); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type restoreFactRequest struct {
+	FactKey    string `json:"fact_key" binding:"required"`
+	Confidence string `json:"confidence"` // 可选：confirmed | tentative，默认 tentative
+}
+
+// RestoreFact POST /api/projects/:id/facts/restore
+func (h *ProjectHandler) RestoreFact(c *gin.Context) {
+	var req restoreFactRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.db.RestoreProjectFact(c.Param("id"), req.FactKey, req.Confidence); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
