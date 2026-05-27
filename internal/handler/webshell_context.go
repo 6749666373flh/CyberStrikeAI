@@ -65,7 +65,7 @@ func BuildWebshellAssistantContext(conn *database.WebShellConnection, skillHint,
 	b.WriteString(conn.ID)
 	b.WriteString("\"）：")
 	b.WriteString(webshellAssistantToolList)
-	b.WriteString("。")
+	b.WriteString("。边渗透边记录：每确认新认知即 upsert_project_fact，每验证漏洞即 record_vulnerability，勿等会话结束。")
 	b.WriteString(skillHint)
 	b.WriteString("\n\n用户请求：")
 	b.WriteString(userMsg)
