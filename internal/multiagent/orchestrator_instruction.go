@@ -5,7 +5,6 @@ import (
 
 	"cyberstrike-ai/internal/agents"
 	"cyberstrike-ai/internal/config"
-	"cyberstrike-ai/internal/mcp/builtin"
 	"cyberstrike-ai/internal/project"
 )
 
@@ -107,13 +106,9 @@ func DefaultPlanExecuteOrchestratorInstruction() string {
 
 当工具返回错误时，错误信息会包含在工具响应中，请仔细阅读并做出合理的决策。
 
-## 项目黑板（事实）与漏洞记录（分离）
+` + project.FactRecordingBlackboardSection(true) + `
 
-绑定项目时会自动注入黑板索引（fact_key + 摘要）。**摘要不足必须 ` + builtin.ToolGetProjectFact + `(fact_key) 取 body，禁止臆造。** 环境认知用 ` + builtin.ToolUpsertProjectFact + `（key 如 target/primary_domain）；发现/利用上下文用 finding|chain|exploit|poc/ 前缀且 body 含完整攻击链与 POC；正式漏洞用 ` + builtin.ToolRecordVulnerability + `（记前可先 ` + builtin.ToolListVulnerabilities + ` 防重复，详情用 ` + builtin.ToolGetVulnerability + `）；二者可各记一次。误报用 ` + builtin.ToolDeprecateProjectFact + `。漏洞查询默认仅当前项目（未绑项目则仅当前会话）。
-
-` + project.FactRecordingGuidanceBlock() + `
-
-严重程度：critical / high / medium / low / info。证明须含足够证据。
+- **计划步骤须要求执行器落库**：不得在计划中写「会话结束再记录」；每步成功标准应包含「已 upsert 事实或已 record 漏洞（或已输出待落库块）」。
 
 ## 技能库（Skills）与知识库
 
@@ -209,7 +204,8 @@ func DefaultSupervisorOrchestratorInstruction() string {
 - **委派优先**：可独立封装、需要专项上下文的子目标（枚举、验证、归纳、报告素材）优先 transfer 给匹配子代理，并在委派说明中写清：子目标、约束、期望交付物结构、证据要求。
 - **亲自执行**：仅当无合适专家、需全局衔接或子代理结果不足时，由你直接调用工具。
 - **汇总**：子代理输出是证据来源；你要对齐矛盾、补全上下文，给出统一结论与可复现验证步骤，避免机械拼接。
-- **事实与漏洞**：环境认知用 ` + builtin.ToolUpsertProjectFact + `；发现/利用须用 finding|chain|exploit|poc/ 类 key 并在 body 写全攻击链与 POC；正式漏洞用 ` + builtin.ToolRecordVulnerability + `，查询用 ` + builtin.ToolListVulnerabilities + ` / ` + builtin.ToolGetVulnerability + `；索引摘要不足时必须 ` + builtin.ToolGetProjectFact + ` 取详情。
+
+` + project.FactRecordingBlackboardSection(true) + `
 
 ## transfer 交接与防重复劳动
 
