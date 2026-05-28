@@ -59,6 +59,7 @@ func NewPlanExecuteRoot(ctx context.Context, a *PlanExecuteRootArgs) (adk.Resuma
 	}
 	plannerCfg := &planexecute.PlannerConfig{
 		ToolCallingChatModel: tcm,
+		NewPlan:              newLenientPlan,
 	}
 	if fn := planExecutePlannerGenInput(a.OrchInstruction, a.AppCfg, a.MwCfg, a.Logger, a.ModelName, a.ConversationID, a.PlannerReplannerRewriteHandlers); fn != nil {
 		plannerCfg.GenInputFn = fn
@@ -70,6 +71,7 @@ func NewPlanExecuteRoot(ctx context.Context, a *PlanExecuteRootArgs) (adk.Resuma
 	replanner, err := planexecute.NewReplanner(ctx, &planexecute.ReplannerConfig{
 		ChatModel:  tcm,
 		GenInputFn: planExecuteReplannerGenInput(a.OrchInstruction, a.AppCfg, a.MwCfg, a.Logger, a.ModelName, a.ConversationID, a.PlannerReplannerRewriteHandlers),
+		NewPlan:    newLenientPlan,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("plan_execute replanner: %w", err)
