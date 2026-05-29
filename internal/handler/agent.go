@@ -1445,7 +1445,7 @@ func (h *AgentHandler) AgentLoopStream(c *gin.Context) {
 	var req ChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		// 对于流式请求，也发送SSE格式的错误
-		c.Header("Content-Type", "text/event-stream")
+		c.Header("Content-Type", "text/event-stream; charset=utf-8")
 		c.Header("Cache-Control", "no-cache")
 		c.Header("Connection", "keep-alive")
 		event := StreamEvent{
@@ -1467,7 +1467,7 @@ func (h *AgentHandler) AgentLoopStream(c *gin.Context) {
 	)
 
 	// 设置SSE响应头
-	c.Header("Content-Type", "text/event-stream")
+	c.Header("Content-Type", "text/event-stream; charset=utf-8")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no") // 禁用nginx缓冲
@@ -2048,7 +2048,7 @@ func (h *AgentHandler) SubscribeAgentTaskEvents(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", "text/event-stream")
+	c.Header("Content-Type", "text/event-stream; charset=utf-8")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
