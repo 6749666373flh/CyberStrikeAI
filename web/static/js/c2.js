@@ -1092,7 +1092,7 @@
             cursorBlink: true,
             cursorStyle: 'block',
             fontSize: 14,
-            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            fontFamily: 'Menlo, Monaco, "Courier New", "PingFang SC", "Microsoft YaHei", monospace',
             lineHeight: 1.3,
             scrollback: 5000,
             theme: {
