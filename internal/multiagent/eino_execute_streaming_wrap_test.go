@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cyberstrike-ai/internal/einomcp"
+	"cyberstrike-ai/internal/mcp"
 
 	"github.com/cloudwego/eino/adk/filesystem"
 	"github.com/cloudwego/eino/schema"
@@ -121,6 +122,94 @@ func TestEinoStreamingShellWrap_ToolTimeoutRecvErrIsSoft(t *testing.T) {
 		t.Fatalf("expected timeout hint in stream, got: %q", got.String())
 	}
 }
+
+func TestEinoStreamingShellWrap_CapturesOutputWithToolTimeout(t *testing.T) {
+	inner := &mockStreamingShell{output: "100\n"}
+	notify := einomcp.NewToolInvokeNotifyHolder()
+	var firedContent string
+	notify.Set(func(toolCallID, toolName, einoAgent string, success bool, content string, invokeErr error) {
+		firedContent = content
+	})
+	wrap := &einoStreamingShellWrap{
+		inner:              inner,
+		invokeNotify:       notify,
+		toolTimeoutMinutes: 60,
+	}
+	sr, err := wrap.ExecuteStreaming(context.Background(), &filesystem.ExecuteRequest{Command: "echo 100"})
+	if err != nil {
+		t.Fatalf("ExecuteStreaming: %v", err)
+	}
+	defer sr.Close()
+
+	var got strings.Builder
+	for {
+		resp, rerr := sr.Recv()
+		if errors.Is(rerr, io.EOF) {
+			break
+		}
+		if rerr != nil {
+			t.Fatalf("unexpected stream error: %v", rerr)
+		}
+		if resp != nil && resp.Output != "" {
+			got.WriteString(resp.Output)
+		}
+	}
+	if !strings.Contains(got.String(), "100") {
+		t.Fatalf("stream output = %q, want contains 100", got.String())
+	}
+	if !strings.Contains(firedContent, "100") {
+		t.Fatalf("notify content = %q, want contains 100", firedContent)
+	}
+}
+
+func TestEinoStreamingShellWrap_AbortNoteDoesNotDuplicateStreamedOutput(t *testing.T) {
+	inner := &mockStreamingShell{output: "line1\nline2\n", recvErr: context.Canceled}
+	notify := einomcp.NewToolInvokeNotifyHolder()
+	wrap := &einoStreamingShellWrap{
+		inner:        inner,
+		invokeNotify: notify,
+	}
+	reg := &abortNoteTestRegistry{note: "改成20次"}
+	ctx := mcp.WithEinoExecuteRunRegistry(
+		mcp.WithMCPConversationID(context.Background(), "conv-abort-dup"),
+		reg,
+	)
+	sr, err := wrap.ExecuteStreaming(ctx, &filesystem.ExecuteRequest{Command: "ping -c 10 baidu.com"})
+	if err != nil {
+		t.Fatalf("ExecuteStreaming: %v", err)
+	}
+	defer sr.Close()
+
+	var got strings.Builder
+	for {
+		resp, rerr := sr.Recv()
+		if errors.Is(rerr, io.EOF) {
+			break
+		}
+		if rerr != nil {
+			t.Fatalf("unexpected stream error: %v", rerr)
+		}
+		if resp != nil && resp.Output != "" {
+			got.WriteString(resp.Output)
+		}
+	}
+	out := got.String()
+	if strings.Count(out, "line1") != 1 || strings.Count(out, "line2") != 1 {
+		t.Fatalf("stream duplicated stdout: %q", out)
+	}
+	if !strings.Contains(out, "改成20次") {
+		t.Fatalf("stream missing abort note: %q", out)
+	}
+}
+
+type abortNoteTestRegistry struct {
+	note string
+}
+
+func (r *abortNoteTestRegistry) RegisterActiveEinoExecute(string, context.CancelFunc) {}
+func (r *abortNoteTestRegistry) UnregisterActiveEinoExecute(string)                   {}
+func (r *abortNoteTestRegistry) AbortActiveEinoExecute(string, string) bool           { return false }
+func (r *abortNoteTestRegistry) TakeEinoExecuteAbortNote(string) string               { return r.note }
 
 func TestEinoStreamingShellWrap_NonTimeoutRecvErrStillHard(t *testing.T) {
 	inner := &mockStreamingShell{recvErr: errors.New("broken pipe")}
