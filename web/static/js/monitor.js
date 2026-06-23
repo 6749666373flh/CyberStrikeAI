@@ -1944,6 +1944,7 @@ function handleStreamEvent(event, progressElement, progressId,
                 message: event.message || '',
                 data: d
             });
+            finalizeOutstandingToolCallsForProgress(progressId, 'failed');
             break;
         }
 
