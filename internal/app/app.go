@@ -135,6 +135,10 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 		externalMCPMgr.StartAllEnabled()
 	}
 
+	execReconciler := monitor.NewExecutionReconciler(db, mcpServer, externalMCPMgr, log.Logger)
+	execReconciler.ReconcileOnStartup()
+	monitor.StartStaleRunningReconcileLoop(execReconciler, log.Logger)
+
 	// 创建Agent
 	maxIterations := cfg.Agent.MaxIterations
 	if maxIterations <= 0 {
