@@ -3118,6 +3118,12 @@ function attachToolResultToCall(progressId, toolCallId, data, options) {
     if (!item && mapping && mapping.timeline) {
         item = findToolCallItemById(mapping.timeline, toolCallId);
     }
+    if (!item && progressId) {
+        const progressRoot = document.getElementById(String(progressId));
+        if (progressRoot) {
+            item = findToolCallItemById(progressRoot, toolCallId);
+        }
+    }
     if (!item) return false;
     mergeToolResultIntoCallItem(item, data, options);
     return true;
@@ -3154,7 +3160,7 @@ function coalesceProcessDetailsToolPairs(details) {
             if (id) callsById.set(id, copy);
             fifoCalls.push(copy);
             out.push(copy);
-        } else if (et === 'tool_result') {
+        } else         if (et === 'tool_result') {
             let target = null;
             if (id && callsById.has(id)) {
                 target = callsById.get(id);
@@ -3168,6 +3174,12 @@ function coalesceProcessDetailsToolPairs(details) {
                 }
             }
             if (target) {
+                // agentFacing 或较新的 tool_result 覆盖旧合并（历史数据可能含 reduction 前全量正文）
+                const prev = target.data._mergedResult;
+                if (prev && data.agentFacing !== true && prev.agentFacing === true) {
+                    out.push(detail);
+                    continue;
+                }
                 absorbResult(target, detail);
                 continue;
             }
