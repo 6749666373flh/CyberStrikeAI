@@ -18,6 +18,10 @@ const PROVIDERS = [
     { value: 'openai_compatible', key: 'settingsProbe.compatible', fallback: '兼容 OpenAI 的接口' },
     { value: 'claude', key: 'settingsBasic.providerClaude', fallback: 'Claude（Anthropic Messages）' }
 ];
+const AUDIT_BACKENDS = [
+    { value: 'openai', key: 'settingsProbe.auditBackendChat', fallback: '对话模型' },
+    { value: 'typesafe', key: 'settingsProbe.auditBackendTypeSafe', fallback: 'TypeSafe / Jev' }
+];
 const CONTEXT_PROFILES = ['', 'auto', 'local_auto', 'local', 'economy', 'custom'];
 const TOKEN_LIMITS = [
     ['context_window', 'settingsBasic.contextWindow', '模型上下文窗口（Token）'],
@@ -46,6 +50,15 @@ function profileLabel(t, value) {
 function numberValue(raw) {
     const value = Number(raw);
     return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function normalizeAuditProvider(raw) {
+    const value = (raw || '').trim();
+    const lower = value.toLowerCase();
+    if (!lower) return '';
+    if (lower === 'openai' || lower === 'openai_compatible') return 'openai_compatible';
+    if (lower === 'claude' || lower === 'anthropic') return 'claude';
+    return value;
 }
 
 function channelValues(channel) {
@@ -373,37 +386,125 @@ export default function ProbePanel({ config, canWrite, reloadConfig }) {
         context_profile: form.context_profile
     });
 
-    // The server selects the configured audit backend and resolves inherited fields.
+    // Audit model configuration and connection probe (hitl.audit_backend + hitl.audit_model).
+    const auditBackendLabelId = useId();
+    const auditProviderLabelId = useId();
     const auditModel = config.hitl?.audit_model || {};
-    const auditBackend = (config.hitl?.audit_backend || '').trim().toLowerCase();
-    const auditTypeSafe = ['typesafe', 'jev', 'type-safe', 'typesafe-ai'].includes(auditBackend);
-    const auditProvider = auditModel.provider?.trim() || config.openai?.provider || 'openai';
+    const rawAuditBackend = (config.hitl?.audit_backend || '').trim().toLowerCase();
+    const savedAuditTypeSafe = ['typesafe', 'jev', 'type-safe', 'typesafe-ai'].includes(rawAuditBackend);
+    const auditBaseline = {
+        audit_backend: savedAuditTypeSafe ? 'typesafe' : 'openai',
+        provider: normalizeAuditProvider(auditModel.provider),
+        base_url: auditModel.base_url || '',
+        api_key: auditModel.api_key || '',
+        model: auditModel.model || ''
+    };
+    const [auditDraft, setAuditDraft] = useState({});
+    const auditForm = { ...auditBaseline, ...auditDraft };
+    const auditDirty = Object.keys(auditDraft).length > 0;
+    const auditTypeSafe = auditForm.audit_backend === 'typesafe';
+    const auditProvider = auditForm.provider || config.openai?.provider || 'openai';
     const auditClaude = ['claude', 'anthropic'].includes(auditProvider.toLowerCase());
     const auditProtocol = auditTypeSafe ? 'TypeSafe / Jev'
         : auditClaude ? 'Claude (Anthropic Messages)'
             : t('settingsProbe.compatible', null, '兼容 OpenAI 的接口');
-    const auditSource = auditTypeSafe || ['provider', 'base_url', 'api_key', 'model'].some(key => auditModel[key])
-        ? auditModel.model || auditProtocol
+    const savedAuditProvider = auditModel.provider?.trim() || config.openai?.provider || 'openai';
+    const savedAuditProtocol = savedAuditTypeSafe ? 'TypeSafe / Jev'
+        : ['claude', 'anthropic'].includes(savedAuditProvider.toLowerCase()) ? 'Claude (Anthropic Messages)'
+            : t('settingsProbe.compatible', null, '兼容 OpenAI 的接口');
+    const auditSource = savedAuditTypeSafe || ['provider', 'base_url', 'api_key', 'model'].some(key => auditModel[key])
+        ? auditModel.model || savedAuditProtocol
         : t('settingsProbe.auditInherit', null, '继承主模型');
     const auditURLPlaceholder = auditTypeSafe ? 'https://api.typesafe.ai'
         : config.openai?.base_url || (auditClaude ? 'https://api.anthropic.com' : 'https://api.openai.com/v1');
-    const [auditDraft, setAuditDraft] = useState({});
-    const auditForm = {
-        base_url: auditModel.base_url || '', api_key: auditModel.api_key || '', model: auditModel.model || '',
-        ...auditDraft
-    };
+    const auditBackendOptions = AUDIT_BACKENDS.map(({ value, key, fallback }) => ({ value, label: t(key, null, fallback) }));
+    const auditProviderOptions = [
+        { value: '', label: t('settingsProbe.auditInherit', null, '继承主模型') },
+        ...PROVIDERS.map(({ value, key, fallback }) => ({ value, label: t(key, null, fallback) }))
+    ];
+    if (auditForm.provider && !auditProviderOptions.some(option => option.value === auditForm.provider)) {
+        auditProviderOptions.push({ value: auditForm.provider, label: auditForm.provider });
+    }
     const [auditState, setAuditState] = useState(EMPTY_PROBE);
     const [auditBusy, setAuditBusy] = useState(false);
+    const [auditSaving, setAuditSaving] = useState(false);
+    const [auditSaveError, setAuditSaveError] = useState(null);
+    const [auditApplyPending, setAuditApplyPending] = useState(false);
+    const auditLocked = !canWrite || auditSaving || auditBusy;
     useEffect(() => {
         setAuditDraft({});
         setAuditState(EMPTY_PROBE);
-    }, [auditBackend, auditProvider, auditModel.base_url, auditModel.api_key, auditModel.model]);
+    }, [auditBaseline.audit_backend, auditBaseline.provider, auditBaseline.base_url, auditBaseline.api_key, auditBaseline.model]);
+
+    const updateAudit = (field, value) => {
+        setAuditState(EMPTY_PROBE);
+        if (!auditApplyPending) setAuditSaveError(null);
+        setAuditDraft(current => {
+            const next = { ...current };
+            if (value === auditBaseline[field]) delete next[field];
+            else next[field] = value;
+            return next;
+        });
+    };
+
+    const discardAuditDraft = () => {
+        setAuditDraft({});
+        setAuditState(EMPTY_PROBE);
+        if (!auditApplyPending) setAuditSaveError(null);
+    };
+
+    const applyAudit = async message => {
+        try {
+            await api.post('/config/apply');
+            setAuditApplyPending(false);
+            toastSuccess(message);
+        } catch (error) {
+            setAuditApplyPending(true);
+            setAuditSaveError(error);
+        }
+    };
+
+    const saveAuditModel = async () => {
+        if (auditLocked || saving || !!busy || !auditDirty) return;
+        setAuditSaveError(null);
+        setAuditSaving(true);
+        try {
+            await api.put('/config', { hitl_audit_model: auditDraft });
+            setAuditDraft({});
+            await applyAudit(t('settingsProbe.auditModelSaved', null, '审计模型已保存'));
+            await reloadConfig({ silent: true });
+        } catch (error) {
+            setAuditSaveError(error);
+        } finally {
+            setAuditSaving(false);
+        }
+    };
+
+    const retryAuditApply = async () => {
+        if (auditLocked || saving || !!busy || !auditApplyPending) return;
+        setAuditSaving(true);
+        setAuditSaveError(null);
+        try {
+            await applyAudit(t('settings.apply.applySuccess', null, '配置已成功应用'));
+        } finally {
+            setAuditSaving(false);
+        }
+    };
+
     const testAuditModel = async () => {
-        if (!canWrite) return;
+        if (auditLocked) return;
         setAuditBusy(true);
         setAuditState({ key: 'audit', payload: null, error: null });
+        const body = {
+            base_url: auditForm.base_url,
+            api_key: auditForm.api_key,
+            model: auditForm.model,
+            ...(Object.hasOwn(auditDraft, 'audit_backend') ? { audit_backend: auditForm.audit_backend } : {}),
+            ...(Object.hasOwn(auditDraft, 'provider') ? { provider: auditForm.provider } : {}),
+            ...(auditBaseline.api_key !== '' && auditForm.api_key === '' ? { clear_api_key: true } : {})
+        };
         try {
-            const payload = await api.post('/config/test-audit-model', auditForm);
+            const payload = await api.post('/config/test-audit-model', body);
             setAuditState({ key: 'audit', payload, error: null });
         } catch (error) {
             setAuditState({ key: 'audit', payload: null, error });
@@ -586,41 +687,110 @@ export default function ProbePanel({ config, canWrite, reloadConfig }) {
                     <Space wrap spacing={8}>
                         <Text strong>{t('settingsProbe.auditModelTitle', null, '审计模型')}</Text>
                         <Text type="tertiary" size="small">{auditSource}</Text>
+                        {auditDirty && (
+                            <Tag size="small" color="amber">{t('settings.unsaved', null, '有未保存修改')}</Tag>
+                        )}
                     </Space>
                 )}>
                     <div className="settings-probe-card">
-                        <div><Tag size="small">{auditProtocol}</Tag></div>
+                        {!auditTypeSafe && !auditForm.provider && (
+                            <div><Tag size="small">{auditProtocol}</Tag></div>
+                        )}
                         <Hint>
                             {auditTypeSafe
-                                ? t('settingsProbe.auditTypeSafeHint', null, '按已配置的 TypeSafe / Jev 后端测试。地址和模型留空使用 Jev 默认值；密钥沿用已保存的审计密钥，不继承主模型。')
-                                : t('settingsProbe.auditChatHint', null, '按已配置的审计模型协议测试。地址和模型留空继承主模型；密钥留空或显示 ******** 时沿用已保存的审计密钥，未配置则继承主模型。')}
+                                ? t('settingsProbe.auditTypeSafeHint', null, '点击「保存审计模型」后生效。地址和模型留空使用 Jev 默认值；密钥必须独立配置，不继承主模型。')
+                                : t('settingsProbe.auditChatHint', null, '点击「保存审计模型」后生效。地址、提供商和模型留空继承主模型；密钥显示 ******** 时沿用已保存的审计密钥，留空则继承主模型。')}
                         </Hint>
                         <div className="settings-probe-inline">
+                            <div className="settings-field">
+                                <Text id={auditBackendLabelId} type="tertiary" size="small">
+                                    {t('settingsProbe.auditBackendLabel', null, '审计后端')}
+                                </Text>
+                                <Select
+                                    value={auditForm.audit_backend}
+                                    onChange={value => updateAudit('audit_backend', value)}
+                                    optionList={auditBackendOptions}
+                                    aria-labelledby={auditBackendLabelId}
+                                    disabled={auditLocked}
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                            {!auditTypeSafe && (
+                                <div className="settings-field">
+                                    <Text id={auditProviderLabelId} type="tertiary" size="small">
+                                        {t('settingsBasic.apiProvider', null, 'API 提供商')}
+                                    </Text>
+                                    <Select
+                                        value={auditForm.provider}
+                                        onChange={value => updateAudit('provider', value)}
+                                        optionList={auditProviderOptions}
+                                        aria-labelledby={auditProviderLabelId}
+                                        disabled={auditLocked}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                            )}
                             {[
                                 ['base_url', 'baseUrl', 'API 地址', auditURLPlaceholder],
-                                ['api_key', 'apiKey', 'API 密钥', '********'],
+                                [
+                                    'api_key',
+                                    'apiKey',
+                                    'API 密钥',
+                                    auditTypeSafe
+                                        ? t('settingsProbe.auditKeyRequiredPlaceholder', null, '必填，不继承主模型')
+                                        : t('settingsProbe.auditKeyInheritPlaceholder', null, '留空继承主模型')
+                                ],
                                 ['model', 'model', '模型', auditTypeSafe ? 'jev-latest' : config.openai?.model || '']
                             ].map(([field, key, fallback, placeholder]) => (
                                 <label key={field} className="settings-field">
                                     <Text type="tertiary" size="small">{t('settingsBasic.' + key, null, fallback)}</Text>
                                     <Input
                                         value={auditForm[field]}
-                                        onChange={value => {
-                                            setAuditDraft(current => ({ ...current, [field]: value }));
-                                            setAuditState(EMPTY_PROBE);
-                                        }}
+                                        onChange={value => updateAudit(field, value)}
                                         placeholder={placeholder}
-                                        readOnly={!canWrite || auditBusy}
+                                        readOnly={auditLocked}
                                         mode={field === 'api_key' ? 'password' : undefined}
                                         autoComplete={field === 'api_key' ? 'new-password' : undefined}
                                     />
                                 </label>
                             ))}
                         </div>
-                        <Space>
-                            <Button size="small" loading={auditBusy} disabled={!canWrite} onClick={testAuditModel}>
+                        {(auditApplyPending || auditSaveError) && (
+                            <div className="settings-channel-notices">
+                                {auditApplyPending && (
+                                    <Banner type="warning" bordered closeIcon={null} description={(
+                                        <Space wrap>
+                                            {t('settingsProbe.auditSavedApplyFailed', null, '审计模型已写入配置，应用失败。')}
+                                            <Button size="small" disabled={auditLocked || saving || !!busy} onClick={retryAuditApply}>
+                                                {t('settingsProbe.retryApply', null, '重试应用')}
+                                            </Button>
+                                        </Space>
+                                    )} />
+                                )}
+                                <ErrorBanner error={auditSaveError} />
+                            </div>
+                        )}
+                        <Space wrap>
+                            {canWrite && (
+                                <Button
+                                    size="small"
+                                    theme="solid"
+                                    type="primary"
+                                    loading={auditSaving}
+                                    disabled={!auditDirty || auditBusy || saving || !!busy}
+                                    onClick={saveAuditModel}
+                                >
+                                    {t('settingsProbe.saveAuditModel', null, '保存审计模型')}
+                                </Button>
+                            )}
+                            <Button size="small" loading={auditBusy} disabled={!canWrite || auditSaving} onClick={testAuditModel}>
                                 {t('settingsProbe.testAuditModel', null, '测试审计模型')}
                             </Button>
+                            {canWrite && auditDirty && (
+                                <Button size="small" disabled={auditSaving || auditBusy} onClick={discardAuditDraft}>
+                                    {t('toolGuard.reset', null, '撤销修改')}
+                                </Button>
+                            )}
                         </Space>
                         <ProbeOutput state={auditState} />
                     </div>

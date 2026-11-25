@@ -763,10 +763,11 @@ type UpdateConfigRequest struct {
 	Quake        *config.SpaceSearchConfig   `json:"quake,omitempty"`
 	Shodan       *config.SpaceSearchConfig   `json:"shodan,omitempty"`
 	MCP          *config.MCPConfig           `json:"mcp,omitempty"`
-	Tools        []ToolEnableStatus          `json:"tools,omitempty"`
-	Agent        *AgentConfigUpdate          `json:"agent,omitempty"`
-	Hitl         *config.HitlConfig          `json:"hitl,omitempty"`
-	Knowledge    *config.KnowledgeConfig     `json:"knowledge,omitempty"`
+	Tools          []ToolEnableStatus          `json:"tools,omitempty"`
+	Agent          *AgentConfigUpdate          `json:"agent,omitempty"`
+	Hitl           *config.HitlConfig          `json:"hitl,omitempty"`
+	HitlAuditModel *HitlAuditModelUpdate       `json:"hitl_audit_model,omitempty"`
+	Knowledge      *config.KnowledgeConfig     `json:"knowledge,omitempty"`
 	Robots       *config.RobotsConfig        `json:"robots,omitempty"`
 	MultiAgent   *config.MultiAgentAPIUpdate `json:"multi_agent,omitempty"`
 	C2           *config.C2APIUpdate         `json:"c2,omitempty"`
@@ -847,8 +848,25 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 		}
 		req.AI, req.AIChannel = ai, nil
 	}
+	auditModelUpdate := req.HitlAuditModel != nil
+	if auditModelUpdate {
+		if req.Hitl != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "hitl_audit_model 不能与 hitl 同时更新"})
+			return
+		}
+		hitl, err := req.HitlAuditModel.merge(h.config)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		req.Hitl, req.HitlAuditModel = hitl, nil
+	}
 	if err := restoreConfigRequestSecrets(&req, h.config); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if auditModelUpdate && req.Hitl.EffectiveAuditBackend() == config.HitlAuditBackendTypeSafe && strings.TrimSpace(req.Hitl.AuditModel.APIKey) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TypeSafe API Key 不能为空"})
 		return
 	}
 	if req.OpenAI != nil {
@@ -872,6 +890,14 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 		defer func() {
 			if !configSaved {
 				h.config.AI, h.config.OpenAI = previousAI, previousOpenAI
+			}
+		}()
+	}
+	if auditModelUpdate {
+		previousHitl := cloneHitlConfig(h.config.Hitl)
+		defer func() {
+			if !configSaved {
+				h.config.Hitl = previousHitl
 			}
 		}()
 	}

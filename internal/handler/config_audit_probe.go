@@ -12,11 +12,15 @@ import (
 
 // TestAuditModelRequest overrides the saved audit model for this test only.
 // Omitted fields retain their saved values; blank URL/model fields use the
-// backend's normal defaults. Blank/masked keys retain the saved audit key.
+// backend's normal defaults. Blank/masked keys retain the saved audit key
+// unless ClearAPIKey explicitly clears it for inheritance testing.
 type TestAuditModelRequest struct {
-	BaseURL *string `json:"base_url"`
-	APIKey  *string `json:"api_key"`
-	Model   *string `json:"model"`
+	AuditBackend *string `json:"audit_backend,omitempty"`
+	Provider     *string `json:"provider,omitempty"`
+	BaseURL      *string `json:"base_url"`
+	APIKey       *string `json:"api_key"`
+	Model        *string `json:"model"`
+	ClearAPIKey  bool    `json:"clear_api_key,omitempty"`
 }
 
 // TestAuditModel selects the protocol from the configured audit backend, using
@@ -33,14 +37,27 @@ func (h *ConfigHandler) TestAuditModel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "审计模型未配置"})
 		return
 	}
-	hitl, main := h.config.Hitl, h.config.OpenAI
+	hitl, main := cloneHitlConfig(h.config.Hitl), h.config.OpenAI
+	savedProvider, savedURL := hitl.AuditModel.Provider, hitl.AuditModel.BaseURL
+	if req.AuditBackend != nil {
+		hitl.AuditBackend = *req.AuditBackend
+	}
+	if req.Provider != nil {
+		hitl.AuditModel.Provider = strings.TrimSpace(*req.Provider)
+	}
 	if req.BaseURL != nil {
 		hitl.AuditModel.BaseURL = strings.TrimSpace(*req.BaseURL)
+	}
+	if probeHeaderProvider(hitl.AuditModel.Provider) != probeHeaderProvider(savedProvider) ||
+		probeHeaderURL(hitl.AuditModel.Provider, hitl.AuditModel.BaseURL) != probeHeaderURL(savedProvider, savedURL) {
+		hitl.AuditModel.Headers = nil
 	}
 	if req.Model != nil {
 		hitl.AuditModel.Model = strings.TrimSpace(*req.Model)
 	}
-	if req.APIKey != nil {
+	if req.ClearAPIKey {
+		hitl.AuditModel.APIKey = ""
+	} else if req.APIKey != nil {
 		if key := strings.TrimSpace(*req.APIKey); key != "" && key != maskedSecret {
 			hitl.AuditModel.APIKey = key
 		}
